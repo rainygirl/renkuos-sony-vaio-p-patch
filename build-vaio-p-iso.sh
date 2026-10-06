@@ -390,6 +390,33 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# The cross-compilers run under the same emulation as the host ones, and they
+# die the same way: `i586-pc-haiku-gcc: internal compiler error: Segmentation
+# fault signal terminated program cc1plus`, on a different file every run. Jam
+# re-runs only what failed, so a build does converge by being restarted over
+# and over -- fifteen restarts of one image build, each losing a single
+# object, is what prompted this. The wrappers from above are reused: the tool
+# is moved aside once and replaced by a script that calls it through
+# .cc-retry, so a signal death or an ICE is retried instead of failing the
+# build. Driver-level wrapping covers cc1plus, as and collect2 alike, since
+# each is a child of the driver.
+# ---------------------------------------------------------------------------
+if [ "${CC_RETRY:-0}" = "1" ] && [ -x /usr/local/bin/.cc-retry ]; then
+	wrapped=0
+	for tool in "$GENDIR"/cross-tools-*/bin/*-gcc "$GENDIR"/cross-tools-*/bin/*-g++ \
+			"$GENDIR"/cross-tools-*/bin/*-c++; do
+		[ -f "$tool" ] || continue
+		[ -f "$tool.real" ] && continue
+		mv "$tool" "$tool.real"
+		printf '#!/bin/sh\nexec /usr/local/bin/.cc-retry "%s" "$@"\n' \
+			"$tool.real" > "$tool"
+		chmod +x "$tool"
+		wrapped=$((wrapped + 1))
+	done
+	[ "$wrapped" -gt 0 ] && log "Wrapped $wrapped cross-compiler driver(s) for retry"
+fi
+
+# ---------------------------------------------------------------------------
 log "Building jam"
 # ---------------------------------------------------------------------------
 JAM_BIN="$WORK_DIR/buildtools/jam/bin.linux$(uname -m | sed 's/x86_64/x86/;s/aarch64/arm/')/jam"

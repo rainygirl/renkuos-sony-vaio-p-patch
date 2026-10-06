@@ -1,5 +1,5 @@
 diff --git a/build/jam/DefaultBuildProfiles b/build/jam/DefaultBuildProfiles
-index 1624aa58f8..aba7419185 100644
+index 1624aa58f8..70f4e3d6d6 100644
 --- a/build/jam/DefaultBuildProfiles
 +++ b/build/jam/DefaultBuildProfiles
 @@ -119,6 +119,11 @@ rule DefineDefaultBuildProfiles
@@ -1799,6 +1799,64 @@ index 7b9dd027e6..c509f78641 100644
  		}
  		ps2_service_notify_device_added(&ps2_device[PS2_DEVICE_KEYB]);
  	} else {
+diff --git a/src/add-ons/kernel/busses/usb/ehci.cpp b/src/add-ons/kernel/busses/usb/ehci.cpp
+index c249dee637..4ba088f263 100644
+--- a/src/add-ons/kernel/busses/usb/ehci.cpp
++++ b/src/add-ons/kernel/busses/usb/ehci.cpp
+@@ -751,9 +751,15 @@ EHCI::EHCI(pci_info *info, pci_device_module_info* pci, pci_device* device, Stac
+ 
+ 		sitdPhysicalBase += sizeof(sitd_entry);
+ 		itdPhysicalBase += sizeof(itd_entry);
+-		if ((sitdPhysicalBase & 0x10) != 0 || (itdPhysicalBase & 0x10) != 0)
+-			panic("physical base for entry %" B_PRId32 " not aligned on 32\n",
+-				i);
++		// 0x1f, not 0x10: the old mask tested one bit of the five that
++		// have to be clear, so a descriptor misaligned by 4, 8 or 16 bytes
++		// could pass it and be handed to the controller anyway.
++		if ((sitdPhysicalBase & 0x1f) != 0 || (itdPhysicalBase & 0x1f) != 0) {
++			panic("physical base for entry %" B_PRId32 " not aligned on 32: "
++				"itd 0x%" B_PRIx32 " (size %lu), sitd 0x%" B_PRIx32
++				" (size %lu)\n", i, itdPhysicalBase, sizeof(itd_entry),
++				sitdPhysicalBase, sizeof(sitd_entry));
++		}
+ 	}
+ 
+ 	// build flat interrupt tree
+diff --git a/src/add-ons/kernel/busses/usb/ehci_hardware.h b/src/add-ons/kernel/busses/usb/ehci_hardware.h
+index 6c526cc226..ccfeea8fff 100644
+--- a/src/add-ons/kernel/busses/usb/ehci_hardware.h
++++ b/src/add-ons/kernel/busses/usb/ehci_hardware.h
+@@ -285,7 +285,7 @@ typedef struct {
+ #ifdef B_HAIKU_64_BIT
+ 	uint32		padding[1]; // align on 128
+ #else
+-	uint32		padding[5]; // align on 128
++	uint32		padding[4]; // align on 128
+ #endif
+ } itd_entry;
+ 
+@@ -299,6 +299,21 @@ typedef struct {
+ #endif
+ } sitd_entry;
+ 
++// Every descriptor the controller follows has to be 32-byte aligned, and
++// EHCI::EHCI() relies on that holding for each step of sizeof() through these
++// arrays. Adding a member to one of the descriptors above without adjusting
++// the padding here breaks it: `frame` in ehci_itd grew the 32-bit itd_entry to
++// 132 bytes, which on 32-bit builds panicked the kernel during PCI enumeration
++// ("physical base for entry 3 not aligned on 32") and, had the entries merely
++// been 8-byte misaligned instead, would have overrun the sitd array. Catch it
++// at build time rather than at boot.
++#define EHCI_ASSERT_32_BYTE_ENTRY(type) \
++	typedef char type##_must_be_32_byte_aligned[(sizeof(type) % 32) == 0 ? 1 : -1]
++
++EHCI_ASSERT_32_BYTE_ENTRY(interrupt_entry);
++EHCI_ASSERT_32_BYTE_ENTRY(itd_entry);
++EHCI_ASSERT_32_BYTE_ENTRY(sitd_entry);
++
+ #define EHCI_INTERRUPT_ENTRIES_COUNT	(7 + 1)		// (log 128 / log 2) + 1
+ #define EHCI_VFRAMELIST_ENTRIES_COUNT	128
+ #define EHCI_FRAMELIST_ENTRIES_COUNT	1024
 diff --git a/src/add-ons/kernel/drivers/audio/hda/driver.h b/src/add-ons/kernel/drivers/audio/hda/driver.h
 index 330b28f4e7..9cd61cb410 100644
 --- a/src/add-ons/kernel/drivers/audio/hda/driver.h
