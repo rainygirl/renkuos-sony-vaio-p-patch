@@ -6,9 +6,9 @@ English version: [`AGENTS.md`](AGENTS.md).
 
 ## 패치 기준 시점
 
-이 패치들은 Haiku 배포판인 **RenkuOS**(<https://github.com/RenkuOS/Source>)의 커밋 **`c7942d0ed7`** 에 적용됩니다 — 공개된 nightly `build00034` 가 빌드된 바로 그 커밋입니다. `vaio-p-patches.diff`는 이 커밋 기준으로 생성했고, 해당 커밋을 깨끗하게 체크아웃한 트리에서 plain apply와 reverse apply가 모두 문제없음을 확인했습니다.
+이 패치들은 Haiku 배포판인 **RenkuOS**(<https://github.com/RenkuOS/Source>)의 커밋 **`fdb7f13c5a`** 에 적용됩니다 — 공개된 nightly `build00041` 이 빌드된 바로 그 커밋입니다. `vaio-p-patches.diff`는 이 커밋 기준으로 생성했고, 해당 커밋을 깨끗하게 체크아웃한 트리에서 plain apply와 reverse apply가 모두 문제없음을 확인했습니다.
 
-직전 기준 `f04d7eb54a`(nightly `build00021`)는 `c7942d0ed7` 의 직계 조상입니다(113커밋 앞, 0커밋 뒤). 아래 "`f04d7eb54a` 에서 `c7942d0ed7` 로 옮기며" 를 참고하세요. 그 전 기준이던 haiku.git `88b7b8b350`은 `f04d7eb54a`의 직계 조상(111커밋 앞, 0커밋 뒤)이므로, RenkuOS로 옮긴 것은 이식이 아니라 앞 방향 rebase였습니다.
+직전 기준 `c7942d0ed7`(nightly `build00034`)는 그 직계 조상이고(21커밋 앞, 0커밋 뒤), 그중 두 커밋이 여기에 걸립니다. `c15045f974` 는 `ehci.cpp` 의 isochronous 취소를 구현합니다. 이 패치 묶음에 필요했던 것이고 이제 우리가 들고 있지 않아도 됩니다(아래 "튜너 앱을 쓰면 카메라가 죽던 문제" 참고). `676e5cffa0` 은 `ehci_itd` 에 멤버를 더해 32비트 디스크립터 정렬을 깨뜨린 그 커밋입니다. 그 전 기준 `f04d7eb54a`(nightly `build00021`)는 `c7942d0ed7` 의 직계 조상입니다(113커밋 앞, 0커밋 뒤). 아래 "`f04d7eb54a` 에서 `c7942d0ed7` 로 옮기며" 를 참고하세요. 그 전 기준이던 haiku.git `88b7b8b350`은 `f04d7eb54a`의 직계 조상(111커밋 앞, 0커밋 뒤)이므로, RenkuOS로 옮긴 것은 이식이 아니라 앞 방향 rebase였습니다.
 
 ### 빌드가 따르는 커밋, 그리고 `nightly` 태그를 쓰지 않는 이유
 
@@ -70,6 +70,8 @@ haiku.git 기준일 때도 세 건이 같은 식으로 빠졌습니다:
 - **UHCI 컨트롤러 halt 복구** — `uhci.cpp`/`.h`: 일부 하드웨어에서는 오작동하는 장치와 통신하다 컨트롤러 자체가 halt(`process error` → `host controller halted`)되는데, 기존 드라이버는 이때 인터럽트만 끄고 그 컨트롤러(와 거기 물린 모든 장치)를 부팅 내내 영구히 죽은 상태로 방치했습니다 — 소스에 `// ToDo: cancel all transfers and reset the host controller`라고 그대로 적혀 있었습니다. 이제는 진행 중이던 전송을 실제로 취소(소프트웨어 기록뿐 아니라 스케줄에서도 unlink — 이 unlink를 빠뜨린 첫 시도는 즉시 재halt가 반복되며 CPU를 잡아먹는 버그를 냈습니다)하고, 컨트롤러를 리셋한 뒤 스케줄을 재시작합니다. 그래도 halt가 계속 반복되면(스케줄 재시작 자체가 다시 halt를 유발하는, 장치 활동과 무관한 하드웨어 결함으로 보이는 경우) 2초 내 몇 차례 시도 후 포기하도록 상한을 뒀습니다(무한 루프 방지).
 - **PS/2 멀티플렉서** — `ps2_common.cpp`: 아무것도 연결되지 않은 멀티플렉스 서브포트(1~3)에 대해 매직시퀀스 전체를 시도하고 타임아웃까지 기다리는 대신, 실제로 응답이 있는 포트만 프로브합니다.
 - **WiFi (Atheros AR928X)** — `if_ath.c`/`if_athvar.h`: beacon-miss/bb-hang 복구가 반복되면 어댑터를 PCI 파워사이클(D3->D0)까지 강제합니다. `ieee80211_scan_sta.c`: 실제 접속 요청이 있기 전까지 `net80211`이 열린 AP에 마음대로 자동 접속하지 못하게 막습니다(원래는 STA 모드의 기본 후보 스캔이 부팅 시 가장 가까운 열린 이웃 AP를 붙잡았습니다). `AutoconfigLooper.cpp`/`.h`: 자동 접속을 한 번만 시도하지 않고 유예 시간을 두고 재시도하며, 의도치 않은 오픈 네트워크 연결을 "완료"로 취급하지 않습니다.
+- **무선: 접속 도중의 스캔이 접속을 버린다** — `ieee80211_ioctl.c`: `IEEE80211_IOC_SCAN_REQ` 는 VAP 상태와 무관하게 스캔을 시작했다. 스캔은 라디오를 BSS 채널에서 수백 밀리초씩 떼어놓으므로, 진행 중인 인증이나 결합 교환은 AP 의 응답도, 자기 요청의 재전송도 전부 놓치고, 10초 뒤 supplicant 가 로컬 deauth(reason 3)로 포기한다. 이 기기에서 측정했다: 실패한 접속은 그 10초 안에 스캔이 7번 완료됐고, 1초 안에 끝난 성공한 접속들은 스캔이 끼어들지 않은 것들이었다. 이제 AUTH/ASSOC 상태에서는 `EBUSY` 로 거절하고, 요청한 쪽은 접속이 정리된 뒤 다시 물어보면 된다.
+- **무선: 자동 재시도가 공중에 나가지 않았다** — `NetServer.cpp`, `AutoconfigLooper.cpp`: 접속이 한 번 실패한 뒤 이 기기는 33분 동안 2분마다 스캔만 했고 접속 시도는 **한 번도** 공중에 나가지 않았다(스캔 16회 완료, 스캔 결과 읽기 16회, `SCAN -> AUTH` 0회). 손으로 접속해야만 복구됐다. 밖에서 보면 "비밀번호를 다시 묻고, 맞게 넣어도 안 된다" 가 바로 이 모습이다. `_AutoJoinNetwork()` 는 저장된 네트워크를 스캔 결과로 해석하고, 해석되지 않으면 아무 말 없이 건너뛴다. 그래서 해석되지 않는 항목은 아무도 보고하지 않는 막다른 길이 된다. 이제는 저장된 이름으로 접속하는 경로로 넘어간다. 사용자가 손으로 하는 것과 같은 경로다. 단, 그 순간 공중에 실제로 있는 SSID 일 때만이다. 범위 밖 이름도 supplicant 는 받아들이고 `_JoinNetwork()` 는 성공을 돌려주므로, 그런 이름으로 접속을 걸면 정작 사용자가 옆에 두고 있는 네트워크를 시도하기 전에 탐색이 끝나버린다. 이 수정의 첫 판이 설정에 남아 있던 호텔 네트워크로 정확히 그 짓을 했고, 실기기에서 잡았다. 이제 각 단계가 무엇을 선택했는지 syslog 에 남긴다.
 - **`ifconfig <장치> scan`이 영영 끝나지 않을 수 있음** — `src/kits/network/libnetapi/NetworkDevice.cpp`: `BNetworkDevice::Scan(wait = true)`가 스캔 완료 리스너를 `wait_for_thread()`로 무한정 기다렸습니다. net80211은 이미 진행 중인 스캔에 요청을 흡수시키면서 `EINPROGRESS`가 아니라 성공을 돌려주는 경우가 있는데, 그 스캔의 완료 통보는 이 리스너가 생기기 전에 이미 나간 뒤라 `B_NETWORK_WLAN_SCANNED`가 영영 오지 않습니다. 이 기기에서 관측: `ifconfig` 프로세스 3개가 10분 넘게 그 자리에 묶여 있다가 손으로 죽여야 사라졌고, 같은 스캔을 단독으로 돌리면 20초 안에 끝났습니다. 이제 20초(여기서 전 대역 능동 스캔의 약 두 배)로 제한하고, 살아 있을 때 확보해 둔 메신저로 리스너를 종료시킨 뒤 `B_TIMED_OUT`을 반환합니다. `ifconfig`가 낡은 캐시를 새 결과인 양 출력하지 않고 타임아웃을 알립니다.
 - **Sony EC 드라이버 (신규) — Fn+F5/F6 밝기 단축키 실동작 포함** — `drivers/power/sony_ec/`: Sony `SNY5001` ACPI 장치(SNC)용 신규 MIT 라이선스 드라이버로, 밝기 조회/설정, 핫키 arm, 무선 스위치/Fn키 notify 이벤트를 처리합니다. 무선 킬스위치를 토글할 때마다 WLAN 라디오 전원(SNC `F124` sub-function 4)과 Bluetooth 모듈 전원(sub-function 6)을 함께 요청합니다 — 둘 다 이 모델의 DSDT를 직접 디스어셈블해 알아낸 프로토콜이며, EC가 알아서 해주지 않는 일입니다. 덕분에 스위치를 껐다 켜도 WiFi가 죽지 않고 살아나며, Bluetooth 모듈의 로직 전원도 켜집니다(sub-function 5 readback으로 `BTPW` 반영을 확인했고, 모듈의 USB 존재 신호가 전원을 정확히 따라 움직이는 것도 실측 확인). 킬스위치 토글과 별개로, 부팅 후 ~10초 뒤 한 번 무조건 Bluetooth 전원을 요청합니다(스위치를 아예 안 건드리는 개체도 있으므로). (스위치 옆 표시 LED는 이 개체에서는 소프트웨어로 제어되지 않습니다: `WLSL` 비트 쓰기/재독은 정상 동작하지만 실제 LED에는 반영되지 않음.) Linux `sony-laptop.c`를 그대로 가져온 게 아니라 처음부터 새로 작성했습니다(자세한 내용은 드라이버 코드 내 주석 참고).
   - **이제 Fn+F5/F6이 실제로 화면 밝기를 조절합니다.** Fn-로우 12개 키 전부가 DSDT의 `_Q0A`/`_Q0B` EC 쿼리를 거쳐 같은 notify(handle `0x0100`) 하나로 들어오는데, 실제 어떤 키인지는 `F100`의 sub-function 2(`BUF0 = SNC.ECR`, notify 직전에 `H8EC.HKCD`로 채워짐)로 읽어와 실기에서 직접 눌러 확인했습니다(Fn+F5 → 코드 `0x05`/`0x85`, Fn+F6 → `0x06`/`0x86`; press/release 구분은 안 했고 0x80 비트 없는 쪽 코드에서만 동작). 더 어려웠던 부분: 이 모델의 `SBRT` ACPI 메서드는 SNC 자체 스크래치 레지스터를 갱신하고 `ASLE`("백라이트 변경됨" 신호, 인텔 그래픽 드라이버가 받아서 처리하는 용도)를 세팅하는 것까지만 하는데, Haiku엔 이 PowerVR SGX 기반 Poulsbo/GMA500 칩용 그래픽 드라이버가 없어서(아래 "그래픽 가속" 참고) 아무도 이 신호를 안 받습니다. 처음엔 전통적인 인텔 모바일 `BLC_PWM_CTL` MMIO 레지스터(상위16비트 period/하위16비트 duty)를 추측해서 시도했는데 — 실제로 화면 밝기가 바뀌긴 했지만(이 오프셋의 어떤 레지스터가 밝기에 영향을 준다는 증거) 레벨별 밝기 순서가 뒤죽박죽이었습니다(계산한 duty cycle 값 자체는 readback으로 단조 증가가 확인됐으니 수학 문제가 아니라 이 칩의 실제 레지스터 배치와 다른 엉뚱한 레지스터를 건드린 것). Intel의 [SCH US15W 데이터시트](https://www.versalogic.com/wp-content/themes/vsl-new/assets/resources/support/ocelot/Intel_SCH_Specification_Mar_2009.pdf)(문서번호 319537, Graphics/Video/Display D2:F0 섹션)에 진짜 방식이 나와있었습니다: **PCI Config Space 오프셋 0xF4의 LBB(Legacy Backlight Brightness) 레지스터** — period/duty 계산이 아예 필요 없는 단순 선형 0(가장 어두움)~255(가장 밝음) 값이고, 이걸로 바꾸니 실기에서 단조롭고 고른 밝기 조절이 확인됐습니다.
@@ -157,6 +159,37 @@ fd 의 open mode 에 `O_NONBLOCK` 으로만 옮기고 끝났습니다. `connect(
 모두에서 확인했습니다. 다시 빌드한 커널에서 같은 `connect()` 가 0 ms 만에
 `EINPROGRESS` 를 돌려주고, 우회 수정이 없는 HaikuPorts curl-8.22.0-3 이
 https://www.haiku-os.org/ 를 1.2초에 받아 옵니다.
+
+## 튜너 앱을 쓰면 카메라가 죽던 문제 (2026-10-07)
+
+제보 내용: ROneSeg(1seg 튜너 앱)를 쓰고 나면 CodyCam 이 쓸 수 있는 비디오
+스트림을 못 찾는다. 기기에서 재현했고, 커널이 원인을 말해줬다.
+
+```
+usb error ehci 3: FinishIsochronousTransfers gave up: scanned all 129 virtual
+frames without finding a completed transfer (pending list non-empty)
+```
+
+`EHCI::CancelQueuedIsochronousTransfers()` 가 빈 함수였다. 본문에
+`// TODO implement` 가 그대로 있고, 전송을 비활성으로 표시한 뒤 에러를 돌려주는
+게 전부였다. 디스크립터를 주기 프레임 목록에서 떼지도, 해제하지도, `Transfer`
+를 완료시키지도, 대기 목록에서 빼지도 않았다. 그래서 isochronous 스트림을 내릴
+때마다 완료 처리 스레드가 결코 치울 수 없는 항목이 남는다. 이후 그 스레드는 128
+개 가상 프레임을 전부 훑고도 완료된 것을 찾지 못하고, 그 컨트롤러에서는 어떤
+isochronous 전송도 다시는 끝나지 않는다. 이 기기에서는 카메라와 튜너가 EHCI
+컨트롤러 하나를 함께 쓰므로, 한쪽을 쓰면 다른 쪽이 재부팅 전까지 죽어 있었다.
+
+RenkuOS 가 `c15045f974` 로 고쳤다. "패치 기준 시점" 의 규칙대로 그쪽 버전을
+쓰며, `vaio-p-patches.diff` 는 이것을 들고 있지 않다. 그 커밋으로 빌드한
+드라이버로 실기기에서 확인했다. CodyCam → 종료 → ROneSeg → 종료 → CodyCam 순서로
+두 번 모두 영상이 나왔고, 스톡 드라이버가 찍던 `gave up` 줄이 한 번도 나오지
+않았다.
+
+**아직 남은, 별개의 결함:** CodyCam 을 빠르게 세 번 여닫으면(종료 후 약 4초 뒤
+재실행) 여전히 "비디오 원본을 연결할 수 없습니다" 로 끝난다. 기다려도 풀리지
+않고 `media_server`/`media_addon_server` 를 재시작해도 안 되며, 재부팅해야
+돌아온다. 이번에는 커널이 아무 것도 남기지 않고 카메라도 계속 열거되어 있다.
+위에서 고친 isochronous 경로가 아니라 애드온이나 장치 자체의 상태 문제다.
 
 ## WebPositive HTML5 비디오를 이미지에 넣는다 (2026-10-01)
 

@@ -74,7 +74,7 @@ RENKU_API="https://api.github.com/repos/RenkuOS/Source"
 # The RenkuOS commit vaio-p-patches.diff was last regenerated from and
 # verified against (plain apply and reverse apply both clean). Used only when
 # the nightly cannot be looked up; bump it when the diff is regenerated.
-VERIFIED_RENKU_REF="c7942d0ed75d37e3b73b343bf2213a9ab58af07e"
+VERIFIED_RENKU_REF="fdb7f13c5a87405f97a983e92349a8bf95b8633e"
 
 log() { printf '\n\033[1;34m==>\033[0m %s\n' "$*"; }
 die() { printf '\n\033[1;31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }

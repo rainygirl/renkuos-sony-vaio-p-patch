@@ -6,9 +6,9 @@ Install and build instructions live in [`README.md`](README.md). This file is ev
 
 ## Patch baseline
 
-The patches are applied to **RenkuOS** (<https://github.com/RenkuOS/Source>), a Haiku distribution, at commit **`c7942d0ed7`** -- the commit its published nightly `build00034` was built from. `vaio-p-patches.diff` is generated against that commit and verified on a pristine checkout of it: plain apply clean, reverse apply clean.
+The patches are applied to **RenkuOS** (<https://github.com/RenkuOS/Source>), a Haiku distribution, at commit **`fdb7f13c5a`** -- the commit its published nightly `build00041` was built from. `vaio-p-patches.diff` is generated against that commit and verified on a pristine checkout of it: plain apply clean, reverse apply clean.
 
-The previous baseline, `f04d7eb54a` (nightly `build00021`), is a direct ancestor of `c7942d0ed7` (113 commits ahead, 0 behind); see "Moving from `f04d7eb54a` to `c7942d0ed7`" below. Before that, haiku.git `88b7b8b350` was a direct ancestor of `f04d7eb54a` (111 commits ahead, 0 behind), so moving to RenkuOS was a forward rebase rather than a port.
+The previous baseline, `c7942d0ed7` (nightly `build00034`), is a direct ancestor of it (21 commits ahead, 0 behind), and two of those commits matter here: `c15045f974` implements isochronous cancellation in `ehci.cpp`, which this patch set needed and no longer has to carry (see "The camera stopped working after the tuner app" below), and `676e5cffa0` is the one whose `ehci_itd` member broke the 32-bit descriptor alignment. The one before that, `f04d7eb54a` (nightly `build00021`), is a direct ancestor of `c7942d0ed7` (113 commits ahead, 0 behind); see "Moving from `f04d7eb54a` to `c7942d0ed7`" below. Before that, haiku.git `88b7b8b350` was a direct ancestor of `f04d7eb54a` (111 commits ahead, 0 behind), so moving to RenkuOS was a forward rebase rather than a port.
 
 ### What the build follows, and why not the `nightly` tag
 
@@ -70,6 +70,8 @@ The diff no longer reverts upstream's boot loader timing work (`a89c12444a`, `30
 - **UHCI controller halt recovery** — `uhci.cpp`/`.h`: on some hardware, this controller halts (`process error` -> `host controller halted`) when talking to a misbehaving device, and the driver previously just disabled interrupts and left the controller (and everything sharing it) permanently dead for the rest of the boot -- a literal `// ToDo: cancel all transfers and reset the host controller` in the source. Now it actually cancels in-flight transfers (properly unlinking them from the schedule, not just the software bookkeeping -- an earlier attempt at this that skipped that step caused an immediate re-halt loop that pegged the CPU), resets the controller, and restarts the schedule. If halts keep recurring in a tight loop anyway (observed on hardware where restarting the schedule alone re-triggers the fault, with no device activity involved), it gives up after a few tries within 2 seconds instead of looping forever.
 - **PS/2 multiplexer** — `ps2_common.cpp`: only probes mux sub-ports 1-3 that actually have something respond, instead of running the full magic-knock sequence (and eating the timeout) on ports nothing is plugged into.
 - **WiFi (Atheros AR928X)** — `if_ath.c`/`if_athvar.h`: escalates repeated beacon-miss/bb-hang recovery to a full PCI power-cycle (D3->D0) of the adapter. `ieee80211_scan_sta.c`: stops `net80211` from auto-joining any open AP before a real join was ever requested (the STA-mode default candidate scan used to grab the nearest open neighbor AP at boot). `AutoconfigLooper.cpp`/`.h`: retries auto-join on a grace period instead of only once, and doesn't treat an unsolicited open-network association as "done."
+- **Wireless: a scan during the join throws the join away** — `ieee80211_ioctl.c`: `IEEE80211_IOC_SCAN_REQ` started a scan whatever state the VAP was in. A scan takes the radio off the BSS channel for hundreds of milliseconds at a time, so an authentication or association exchange in flight loses the AP's reply *and* every retransmission of its own request, and the supplicant gives up ten seconds later with a local deauthenticate (reason 3). Measured here: the failing join had seven scans complete inside those ten seconds, while the joins that finished in under a second were the ones no scan landed in. The request is now refused with `EBUSY` while the VAP is in AUTH or ASSOC, and the caller asks again once the join has settled.
+- **Wireless: the automatic retry never reached the air** — `NetServer.cpp`, `AutoconfigLooper.cpp`: after a failed join this machine scanned every two minutes for 33 minutes with **no** join attempt reaching the air (16 scans completed, 16 reads of the scan results, zero `SCAN -> AUTH`), and only a join by hand recovered it -- which is what "it asks for the password again and the password does not work" looks like from the outside. `_AutoJoinNetwork()` resolves each configured network through the scan results and silently skips the ones it cannot resolve, so an unresolvable entry is a dead end that nothing reports. It now falls back to joining the stored network by name, which is exactly what the user does by hand -- but only for an SSID that is on the air at that moment. An out-of-range name is accepted by the supplicant and `_JoinNetwork()` returns success for it, so joining one would end the search before the network the user is sitting next to is ever tried; the first cut of this fix did precisely that with a hotel network left in the settings, and it was caught on hardware. Every step now says what it decided in the syslog.
 - **`ifconfig <device> scan` could hang forever** — `src/kits/network/libnetapi/NetworkDevice.cpp`: `BNetworkDevice::Scan(wait = true)` waited on its scan-completion listener with an unbounded `wait_for_thread()`. net80211 can accept a scan request, returning success rather than `EINPROGRESS`, without ever running one through to completion -- the request is folded into a scan already in flight, whose own completion was reported before this listener existed -- and then `B_NETWORK_WLAN_SCANNED` never arrives. Observed on this machine: three `ifconfig` processes parked there for over ten minutes until killed by hand, while the same scan run alone finished in under twenty seconds. The wait is now bounded at 20 seconds (roughly twice a full-band active scan here), after which the listener is quit through a messenger captured while it was known alive, and `B_TIMED_OUT` is returned so `ifconfig` says so instead of printing a stale cache as a fresh result.
 - **Sony EC driver (new) — including working Fn+F5/F6 brightness keys** — `drivers/power/sony_ec/`: a new MIT-licensed driver for the Sony `SNY5001` ACPI device (SNC), covering brightness get/set, hotkey arming, and the wireless kill-switch/Fn-key notify events. On every kill-switch toggle it requests both WLAN radio power (SNC `F124` sub-function 4) and Bluetooth module power (sub-function 6) — both derived from this model's disassembled DSDT, and neither is something the EC does on its own — so WiFi actually comes back after an off/on cycle instead of staying dead, and the Bluetooth module gets its logic power enabled (readback via sub-function 5 confirms `BTPW` sticks, and the module's USB presence visibly follows it). It also requests Bluetooth power once, unconditionally, ~10 seconds after boot (not just on kill-switch toggle), since some units never toggle the switch at all. (The indicator LED next to the switch is not EC/software-controllable on this unit: the `WLSL` bit writes and reads back fine but has no visible effect.) Written from scratch against the ACPI protocol (documented in the driver's own comments), not derived from Linux's `sony-laptop.c`.
   - **Fn+F5/F6 now actually dim/brighten the panel.** All twelve Fn+Fn-row keys funnel through the DSDT's `_Q0A`/`_Q0B` EC queries into one shared notify (handle `0x0100`); the driver reads the real per-key code back via `F100` sub-function 2 (`BUF0 = SNC.ECR`, itself populated from `H8EC.HKCD` right before the notify fires) and identified F5/F6 by testing on real hardware (Fn+F5 → code `0x05`/`0x85`, Fn+F6 → `0x06`/`0x86`; press vs. release wasn't distinguished, so the driver acts once on the non-`0x80` code). The harder part: this model's `SBRT` ACPI method only ever reaches the SNC's own scratch register and fires `ASLE`, a "backlight changed" notification meant for the Intel graphics driver to act on -- and Haiku has no such driver for this PowerVR SGX-based Poulsbo/GMA500 chip (see "graphics acceleration" below), so nothing was ever listening. A first attempt guessed the classic Intel mobile `BLC_PWM_CTL` MMIO register (period/duty in bits 31:16/15:0) — it visibly changed the backlight, proving *some* register at that offset affects it, but the level-to-brightness order came out scrambled (readback of the computed duty cycle was confirmed monotonic, so the bug wasn't in the math — it was the wrong register for this chip's actual layout). Intel's [SCH US15W datasheet](https://www.versalogic.com/wp-content/themes/vsl-new/assets/resources/support/ocelot/Intel_SCH_Specification_Mar_2009.pdf) (doc 319537, Graphics/Video/Display D2:F0 section) documents the real mechanism instead: the **LBB** (Legacy Backlight Brightness) register at **PCI config space offset 0xF4**, a plain linear 0 (dimmest) - 255 (brightest) byte -- no period/duty math needed at all, and confirmed correct (monotonic, evenly spaced) on real hardware once switched to it.
@@ -161,6 +163,40 @@ Verified on a RENKU arm64 image built with it (RENKU media-patch 0013 is the
 same change) and on this machine: with the rebuilt kernel the same `connect()`
 returns `EINPROGRESS` in 0 ms, and the stock HaikuPorts curl-8.22.0-3 (no
 workaround) fetches https://www.haiku-os.org/ in 1.2 s.
+
+## The camera stopped working after the tuner app (2026-10-07)
+
+Reported as: use ROneSeg (the 1seg tuner app), and CodyCam afterwards says it
+cannot find a usable video stream. Reproduced on the machine, where the kernel
+said what was wrong:
+
+```
+usb error ehci 3: FinishIsochronousTransfers gave up: scanned all 129 virtual
+frames without finding a completed transfer (pending list non-empty)
+```
+
+`EHCI::CancelQueuedIsochronousTransfers()` was a stub -- `// TODO implement` --
+that marked the transfer inactive and returned an error. It never unlinked the
+descriptors from the periodic frame list, never freed them, never completed the
+`Transfer` and never took the entry off the pending list. Every torn-down
+isochronous stream therefore left an entry the finisher can never retire; it
+then walks all 128 virtual frames finding nothing completed, and no isochronous
+transfer on that controller ever finishes again. The camera and the tuner share
+the one EHCI controller here, which is why using one left the other dead until
+a reboot.
+
+RenkuOS fixed it in `c15045f974`, so by the rule in "Patch baseline" that
+version is the one used and `vaio-p-patches.diff` carries nothing for it. Tested
+on hardware with a driver built from that commit: CodyCam, quit, ROneSeg, quit,
+CodyCam again -- live video both times, and zero `gave up` lines where the stock
+driver produced them.
+
+**Still open, and a different defect:** opening and closing CodyCam three times
+in quick succession (about four seconds between quit and relaunch) still ends
+with "cannot connect a video source". Waiting does not clear it and neither does
+restarting `media_server`/`media_addon_server`; only a reboot does. The kernel
+logs nothing this time and the camera stays enumerated, so it is in the add-on
+or in the device's own state, not in the isochronous path fixed above.
 
 ## WebPositive's HTML5 video ships in the image (2026-10-01)
 

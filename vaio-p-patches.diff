@@ -1800,7 +1800,7 @@ index 7b9dd027e6..c509f78641 100644
  		ps2_service_notify_device_added(&ps2_device[PS2_DEVICE_KEYB]);
  	} else {
 diff --git a/src/add-ons/kernel/busses/usb/ehci.cpp b/src/add-ons/kernel/busses/usb/ehci.cpp
-index c249dee637..4ba088f263 100644
+index b45f441b9a..23d77eaf16 100644
 --- a/src/add-ons/kernel/busses/usb/ehci.cpp
 +++ b/src/add-ons/kernel/busses/usb/ehci.cpp
 @@ -751,9 +751,15 @@ EHCI::EHCI(pci_info *info, pci_device_module_info* pci, pci_device* device, Stac
@@ -6483,6 +6483,33 @@ index b3beebdf04..0f8ac5d19f 100644
  	return B_OK;
  }
  
+diff --git a/src/libs/compat/freebsd_wlan/net80211/ieee80211_ioctl.c b/src/libs/compat/freebsd_wlan/net80211/ieee80211_ioctl.c
+index 33c59c959e..5808a2f99b 100644
+--- a/src/libs/compat/freebsd_wlan/net80211/ieee80211_ioctl.c
++++ b/src/libs/compat/freebsd_wlan/net80211/ieee80211_ioctl.c
+@@ -2660,6 +2660,22 @@ ieee80211_scanreq(struct ieee80211vap *vap, struct ieee80211_scan_req *sr)
+ 		return ENXIO;
+ 	}
+ 
++	/*
++	 * Not while an authentication or association exchange is in flight.
++	 * A scan takes the radio off the BSS channel for hundreds of
++	 * milliseconds at a time, so the AP's response -- and every
++	 * retransmission of our own request -- is missed, and the join dies ten
++	 * seconds later with the supplicant deauthenticating (reason 3). This
++	 * is not hypothetical: on a VAIO P, seven scans completed inside one
++	 * failed join, and joins that completed in under a second were the ones
++	 * no scan landed in. Ask again once the join has settled.
++	 */
++	if (vap->iv_state == IEEE80211_S_AUTH
++	    || vap->iv_state == IEEE80211_S_ASSOC) {
++		IEEE80211_UNLOCK(ic);
++		return EBUSY;
++	}
++
+ 	if (vap->iv_state == IEEE80211_S_INIT) {
+ 		/* NB: clobbers previous settings */
+ 		vap->iv_scanreq_flags = sr->sr_flags;
 diff --git a/src/libs/compat/freebsd_wlan/net80211/ieee80211_scan_sta.c b/src/libs/compat/freebsd_wlan/net80211/ieee80211_scan_sta.c
 index 529552d371..ffa95d38a0 100644
 --- a/src/libs/compat/freebsd_wlan/net80211/ieee80211_scan_sta.c
@@ -6899,7 +6926,7 @@ index b696c48674..8261813197 100644
  
  	// Build argument vector
 diff --git a/src/servers/net/AutoconfigLooper.cpp b/src/servers/net/AutoconfigLooper.cpp
-index 42bae2a7da..01cb584fd6 100644
+index 42bae2a7da..f3d8788915 100644
 --- a/src/servers/net/AutoconfigLooper.cpp
 +++ b/src/servers/net/AutoconfigLooper.cpp
 @@ -11,13 +11,17 @@
@@ -6989,7 +7016,7 @@ index 42bae2a7da..01cb584fd6 100644
  			}
  
  			fLastMediaStatus = media;
-@@ -194,28 +232,125 @@ AutoconfigLooper::_NetworkMonitorNotification(BMessage* message)
+@@ -194,28 +232,127 @@ AutoconfigLooper::_NetworkMonitorNotification(BMessage* message)
  
  		case B_NETWORK_WLAN_SCANNED:
  		{
@@ -7045,6 +7072,8 @@ index 42bae2a7da..01cb584fd6 100644
 -				// either for the initial connection, or after connection loss
 -				// to re-establish the link.
 +			fJoiningNetworkSince = system_time();
++			syslog(LOG_NOTICE, "net_server: %s: scan completed with no link, "
++				"asking for an auto join", fDevice.String());
 +				// The auto join request below is fire-and-forget -- this
 +				// looper doesn't currently get told whether it actually
 +				// succeeded (that needs infrastructure to discern a scan
@@ -7123,7 +7152,7 @@ index 42bae2a7da..01cb584fd6 100644
  void
  AutoconfigLooper::MessageReceived(BMessage* message)
  {
-@@ -232,6 +367,10 @@ AutoconfigLooper::MessageReceived(BMessage* message)
+@@ -232,6 +369,10 @@ AutoconfigLooper::MessageReceived(BMessage* message)
  			_NetworkMonitorNotification(message);
  			break;
  
@@ -7165,6 +7194,102 @@ index 948b9b4d6f..48bf4b31ee 100644
  };
  
  #endif	// AUTOCONFIG_LOOPER_H
+diff --git a/src/servers/net/NetServer.cpp b/src/servers/net/NetServer.cpp
+index 94a079709a..1b2504dfb0 100644
+--- a/src/servers/net/NetServer.cpp
++++ b/src/servers/net/NetServer.cpp
+@@ -941,6 +941,29 @@ NetServer::_HandleDeviceMonitor(BMessage* message)
+ }
+ 
+ 
++/*!	Is this SSID on the air right now?
++
++	BNetworkDevice::GetNetwork() answers a different question -- it resolves a
++	name or address to one scan entry -- and the auto-join fallback needs to
++	know only whether joining the name has any chance of completing.
++*/
++static bool
++is_network_in_range(BNetworkDevice& device, const char* name)
++{
++	wireless_network* networks = NULL;
++	uint32 count = 0;
++	if (device.GetNetworks(networks, count) != B_OK)
++		return false;
++
++	bool found = false;
++	for (uint32 i = 0; i < count && !found; i++)
++		found = strcmp(networks[i].name, name) == 0;
++
++	delete[] networks;
++	return found;
++}
++
++
+ status_t
+ NetServer::_AutoJoinNetwork(const BMessage& message)
+ {
+@@ -957,26 +980,57 @@ NetServer::_AutoJoinNetwork(const BMessage& message)
+ 	while (fSettings.GetNextNetwork(cookie, networkMessage) == B_OK) {
+ 		status_t status = B_ERROR;
+ 		wireless_network network;
+-		const char* networkName;
+ 		BNetworkAddress link;
+ 
++		// Always read the name, even for an entry that names a MAC: the
++		// fallback below joins by name, and this used to be left
++		// uninitialised in that branch.
++		const char* networkName = NULL;
++		networkMessage.FindString("name", &networkName);
++
+ 		const char* mac = NULL;
+ 		if (networkMessage.FindString("mac", &mac) == B_OK) {
+ 			link.SetTo(AF_LINK, mac);
+ 			status = device.GetNetwork(link, network);
+-		} else if (networkMessage.FindString("name", &networkName) == B_OK)
++		} else if (networkName != NULL)
+ 			status = device.GetNetwork(networkName, network);
+ 
+ 		if (status == B_OK) {
+ 			status = _JoinNetwork(message, mac != NULL ? &link : NULL,
+ 				network.name);
+-			printf("auto join network \"%s\": %s\n", network.name,
+-				strerror(status));
++			syslog(LOG_NOTICE, "net_server: auto join \"%s\": %s",
++				network.name, strerror(status));
++			if (status == B_OK)
++				return B_OK;
++			continue;
++		}
++
++		// GetNetwork() did not resolve it, but the SSID may still be on the
++		// air: the lookup also fails when the entry is in the cache under a
++		// BSSID this configuration does not name, and a stored network that
++		// cannot be resolved is the dead end behind a machine that scans
++		// every two minutes forever without one join reaching the air. Join
++		// it by name then -- which is what the user does by hand, and what
++		// works. Only when it is actually in range: handing the supplicant
++		// an SSID that cannot answer stops this loop (the request is sent,
++		// so it "succeeds") before the network the user is sitting next to
++		// is ever tried, which is exactly what the first version of this
++		// did on a machine whose first stored network was a hotel's.
++		if (networkName != NULL && is_network_in_range(device, networkName)) {
++			status = _JoinNetwork(message, NULL, networkName);
++			syslog(LOG_NOTICE, "net_server: auto join \"%s\" by name (in "
++				"range, but GetNetwork() did not resolve it): %s",
++				networkName, strerror(status));
+ 			if (status == B_OK)
+ 				return B_OK;
++		} else if (networkName != NULL) {
++			syslog(LOG_DEBUG, "net_server: auto join: configured network "
++				"\"%s\" is not in range", networkName);
+ 		}
+ 	}
+ 
++	syslog(LOG_NOTICE, "net_server: auto join on %s: none of the configured "
++		"networks could be joined", name);
+ 	return B_NO_INIT;
+ }
+ 
 diff --git a/src/system/boot/platform/bios_ia32/bios.h b/src/system/boot/platform/bios_ia32/bios.h
 index df0ab58757..461c944179 100644
 --- a/src/system/boot/platform/bios_ia32/bios.h
