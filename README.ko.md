@@ -99,7 +99,7 @@ RenkuOS nightly가 이 설정으로 빌드하기 때문입니다. 상표가 있�
 버퍼를 응용 프로그램에 제대로 넘기지 못하는 상태라 지금은 쓰는 곳이 없습니다.
 
 패치하지 않은 시스템용으로는 같은 드라이버를
-[haiku-gma500-driver](https://github.com/rainygirl/haiku-gma500-driver) 에서 따로
+[haiku-gma500-driver](https://github.com/rainygirl/renkuos-gma500-driver) 에서 따로
 받을 수 있습니다.
 
 ## 비디오
@@ -111,7 +111,7 @@ WebPositive에서 YouTube를 포함한 HTML5 비디오가 재생되고, H.264는
 (HaikuWebKit 1.9.19는 미디어 엔진을 등록하지 않아 `<video>`가 아예 재생되지
 않았습니다), Media Kit 디코더 `msvdx_media_x86`, Intel 펌웨어 `msvdx_firmware`,
 그리고 이들을 묶는 `webpositive_hwvideo`입니다. 소스와 노트:
-[haiku-webpositive-msvdx](https://github.com/rainygirl/haiku-webpositive-msvdx).
+[haiku-webpositive-msvdx](https://github.com/rainygirl/renkuos-webpositive-msvdx).
 WebPositive 환경변수 `MSVDX_MEDIA=0`은 소프트웨어 디코딩을 강제합니다.
 
 ## 빌드 후 확인

@@ -99,7 +99,7 @@ scaling, and Haiku's own overlay path does not yet hand the buffer to the
 application correctly, so nothing uses it today.
 
 The same driver is available separately, for unpatched systems, at
-[haiku-gma500-driver](https://github.com/rainygirl/haiku-gma500-driver).
+[haiku-gma500-driver](https://github.com/rainygirl/renkuos-gma500-driver).
 
 ## Video
 
@@ -111,7 +111,7 @@ against 17.1 ms in software. The ISO ships four packages for it from the
 engine, so no `<video>` played at all), the `msvdx_media_x86` Media Kit
 decoder, Intel's `msvdx_firmware`, and `webpositive_hwvideo` tying them
 together. Source and notes:
-[haiku-webpositive-msvdx](https://github.com/rainygirl/haiku-webpositive-msvdx).
+[haiku-webpositive-msvdx](https://github.com/rainygirl/renkuos-webpositive-msvdx).
 `MSVDX_MEDIA=0` in WebPositive's environment forces software decoding.
 
 ## After building

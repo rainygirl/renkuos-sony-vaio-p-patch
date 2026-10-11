@@ -273,7 +273,7 @@ log "Fetching packages the image injects as plain files"
 #
 # Each entry is "<base URL> <file> [<sha256>]". vim_x86 comes from HaikuPorts.
 # The rest are WebPositive's HTML5 video with H.264 on the GMA500
-# (github.com/rainygirl/haiku-webpositive-msvdx), from pkgman.rainygirl.com's
+# (github.com/rainygirl/renkuos-webpositive-msvdx), from pkgman.rainygirl.com's
 # x86_gcc2-webpositive repository; those are ours, so they are pinned by hash.
 EXTRA_PACKAGES_DIR="$WORK_DIR/vaio-p-packages"
 HAIKUPORTS_URL="https://eu.hpkg.haiku-os.org/haikuports/master/x86_gcc2/current/packages"
