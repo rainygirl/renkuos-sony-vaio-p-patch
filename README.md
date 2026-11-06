@@ -15,6 +15,7 @@ Development and technical notes -- what each patch does, why, and what was measu
 The freshly built `renku-vaio-p.iso` uses RenkuOS/Source commit
 `8484655099aae479b59590d098dfcbf6fdc4d908`. Its SHA-256 is
 `9680d1a8e948c68cfc34c526eea97cb2ed9399f21dd88e69750f011a26c17363`.
+[Download it from the GitHub release](https://github.com/rainygirl/renkuos-sony-vaio-p-patch/releases/tag/2026.11.06).
 The ISO boots to the RenkuOS welcome screen in QEMU; the VAIO-specific hardware
 patches still require verification on the physical VAIO P.
 

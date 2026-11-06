@@ -15,6 +15,7 @@ RenkuOS는 x86_64 이미지를 배포하지만 VAIO P의 Atom Z520은 long mode�
 새로 빌드한 `renku-vaio-p.iso`는 RenkuOS/Source 커밋
 `8484655099aae479b59590d098dfcbf6fdc4d908`을 사용합니다. SHA-256은
 `9680d1a8e948c68cfc34c526eea97cb2ed9399f21dd88e69750f011a26c17363`입니다.
+[GitHub 릴리스에서 다운로드](https://github.com/rainygirl/renkuos-sony-vaio-p-patch/releases/tag/2026.11.06)할 수 있습니다.
 ISO가 QEMU에서 RenkuOS 시작 화면까지 부팅되는 것을 확인했습니다. VAIO 전용
 하드웨어 패치는 실제 VAIO P에서 추가 확인이 필요합니다.
 
