@@ -4,8 +4,8 @@
 # (VGN-P70H_G) -- see AGENTS.md next to this script for what these patches are
 # and why they exist.
 #
-# Source: RenkuOS (https://github.com/RenkuOS/Source), at the commit its
-# published nightly image was built from.
+# Source: the latest RenkuOS/Source `main` commit at build time, unless
+# RENKU_REF selects a pinned revision.
 #
 # Why this builds 32-bit when the RenkuOS nightly is x86_64 only: the VAIO P's
 # Atom Z520 has no long mode. CPUID 0x80000001 EDX reads 0x00100000 on this
@@ -40,11 +40,8 @@
 #                        step most likely to silently go stale/wrong if
 #                        skipped by mistake.
 #   RENKU_REF            Branch/tag/commit of RenkuOS/Source to build.
-#                        Default: the commit the current nightly release was
-#                        built from, read from its release notes (see
-#                        resolve_nightly_commit below for why not the
-#                        "nightly" tag). Falls back to the commit the patch
-#                        was last verified against if that lookup fails.
+#                        Default: current upstream main. Pin a commit to
+#                        reproduce a particular build.
 #   DISTRO_COMPATIBILITY configure --distro-compatibility. Default: "default",
 #                        as the RenkuOS nightly uses. "default" ships no
 #                        trademarked artwork; restore-haiku-logo.sh puts the
@@ -70,12 +67,6 @@ IMAGE_LABEL="${IMAGE_LABEL:-RenkuOS}"
 JAM_TARGET="${JAM_TARGET:-@nightly-anyboot}"
 
 RENKU_REPO="https://github.com/RenkuOS/Source.git"
-RENKU_API="https://api.github.com/repos/RenkuOS/Source"
-# The RenkuOS commit vaio-p-patches.diff was last regenerated from and
-# verified against (plain apply and reverse apply both clean). Used only when
-# the nightly cannot be looked up; bump it when the diff is regenerated.
-VERIFIED_RENKU_REF="fdb7f13c5a87405f97a983e92349a8bf95b8633e"
-
 log() { printf '\n\033[1;34m==>\033[0m %s\n' "$*"; }
 die() { printf '\n\033[1;31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 
@@ -185,41 +176,19 @@ if [ ! -d buildtools/.git ]; then
 	git clone https://github.com/haiku/buildtools.git
 fi
 
-# The commit the published nightly image was built from.
-#
-# Not the "nightly" tag. The nightly workflow re-publishes the release with
-# `gh release edit`, which never moves the tag, so the tag still names the
-# commit of the very first nightly while the ISO attached to that release was
-# built from something weeks newer. The workflow does write the real commit
-# into the release notes as a "| Commit | <sha> |" row, so read it from there.
-resolve_nightly_commit() {
-	wget -qO- "$RENKU_API/releases/tags/nightly" 2>/dev/null \
-		| grep -o '| Commit | [0-9a-f]\{40\}' \
-		| grep -o '[0-9a-f]\{40\}' \
-		| head -1
-}
-
+# Build the latest upstream source by default. Use RENKU_REF to reproduce a
+# particular source revision.
 if [ -z "${RENKU_REF:-}" ]; then
-	RENKU_REF="$(resolve_nightly_commit || true)"
-	if [ -n "$RENKU_REF" ]; then
-		log "RenkuOS nightly was built from $RENKU_REF"
-		if [ "$RENKU_REF" != "$VERIFIED_RENKU_REF" ]; then
-			log "Note: the patch was last verified against $VERIFIED_RENKU_REF;" \
-				"a three-way merge below covers code that merely moved"
-		fi
-	else
-		RENKU_REF="$VERIFIED_RENKU_REF"
-		log "Could not read the nightly release; using the verified commit" \
-			"$RENKU_REF"
-	fi
+	RENKU_REF=main
+	log "Following RenkuOS/Source main (latest upstream commit)"
 fi
 
 log "Checking out RenkuOS/Source ref: $RENKU_REF"
 git -C "$SRC_DIR" fetch --tags origin
-git -C "$SRC_DIR" fetch origin "$RENKU_REF" 2>/dev/null || true
-TARGET_COMMIT="$(git -C "$SRC_DIR" rev-parse --verify "$RENKU_REF^{commit}")"
+git -C "$SRC_DIR" fetch origin "$RENKU_REF"
+TARGET_COMMIT="$(git -C "$SRC_DIR" rev-parse --verify FETCH_HEAD^{commit})"
 if [ "$(git -C "$SRC_DIR" rev-parse HEAD)" != "$TARGET_COMMIT" ]; then
-	# The nightly moves, and this tree carries the previous run's patches.
+	# Upstream master moves, and this tree carries the previous run's patches.
 	# It is a work tree this script owns, so discard them before switching.
 	git -C "$SRC_DIR" reset --hard --quiet
 	git -C "$SRC_DIR" clean -fdq
@@ -243,7 +212,7 @@ PATCH_FILE="$SCRIPT_DIR/vaio-p-patches.diff"
 if git -C "$SRC_DIR" apply --check --reverse "$PATCH_FILE" >/dev/null 2>&1; then
 	log "Patches already applied, skipping"
 else
-	# -3 (three-way) rather than a plain apply: the nightly moves daily, so
+	# -3 (three-way) rather than a plain apply: upstream main moves, so
 	# hunks whose surrounding code merely shifted should merge on their own
 	# instead of failing the whole build. It only leaves conflict markers when
 	# a hunk genuinely disagrees with the tree -- usually because RenkuOS (or

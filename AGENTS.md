@@ -6,13 +6,15 @@ Install and build instructions live in [`README.md`](README.md). This file is ev
 
 ## Patch baseline
 
-The patches are applied to **RenkuOS** (<https://github.com/RenkuOS/Source>), a Haiku distribution, at commit **`fdb7f13c5a`** -- the commit its published nightly `build00041` was built from. `vaio-p-patches.diff` is generated against that commit and verified on a pristine checkout of it: plain apply clean, reverse apply clean.
+The patches are applied to **RenkuOS** (<https://github.com/RenkuOS/Source>), a Haiku distribution, at commit **`8484655099aae479b59590d098dfcbf6fdc4d908`**, the upstream HEAD observed on 2026-11-06. `vaio-p-patches.diff` was regenerated against that commit after checking each old hunk against upstream. Upstream changes are retained where equivalent; the refreshed patch applies cleanly to a pristine checkout.
 
 The previous baseline, `c7942d0ed7` (nightly `build00034`), is a direct ancestor of it (21 commits ahead, 0 behind), and two of those commits matter here: `c15045f974` implements isochronous cancellation in `ehci.cpp`, which this patch set needed and no longer has to carry (see "The camera stopped working after the tuner app" below), and `676e5cffa0` is the one whose `ehci_itd` member broke the 32-bit descriptor alignment. The one before that, `f04d7eb54a` (nightly `build00021`), is a direct ancestor of `c7942d0ed7` (113 commits ahead, 0 behind); see "Moving from `f04d7eb54a` to `c7942d0ed7`" below. Before that, haiku.git `88b7b8b350` was a direct ancestor of `f04d7eb54a` (111 commits ahead, 0 behind), so moving to RenkuOS was a forward rebase rather than a port.
 
-### What the build follows, and why not the `nightly` tag
+### What the build follows
 
-`build-vaio-p-iso.sh` builds whatever the current nightly was built from, reading it from the release notes the nightly workflow writes (`| Commit | <sha> |`). It does **not** check out the `nightly` tag: the workflow republishes the release with `gh release edit`, which never moves the tag, so the tag still points at the first nightly (`47367b99ab`) while the ISO attached to it comes from weeks later. If the release cannot be read, the script falls back to the verified commit above; `RENKU_REF` overrides both. When the nightly has moved past the verified commit, `git apply -3` absorbs hunks whose context merely shifted.
+`build-vaio-p-iso.sh` fetches the current `main` head from RenkuOS/Source on each run, so the patch is checked against the newest upstream source available then. Set `RENKU_REF` to a commit or branch to reproduce a particular build. The patch was refreshed and verified against `8484655099aae479b59590d098dfcbf6fdc4d908` (the upstream HEAD observed on 2026-11-06).
+
+The refreshed patch keeps VAIO-specific fixes and drops changes already incorporated upstream, including the 32-bit EHCI descriptor alignment correction. Upstream commit `6ca7892827` enables drawing the generated splash header in non-official builds. Its default logo pixels are empty, so the refreshed VAIO patch replaces them with the RenkuOS wordmark. The standalone patch is in [`renkuos-logopatch`](../renkuos-logopatch/README.md).
 
 ### 32-bit, although the RenkuOS nightly is x86_64 only
 

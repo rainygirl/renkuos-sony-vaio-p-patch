@@ -6,13 +6,15 @@ English version: [`AGENTS.md`](AGENTS.md).
 
 ## 패치 기준 시점
 
-이 패치들은 Haiku 배포판인 **RenkuOS**(<https://github.com/RenkuOS/Source>)의 커밋 **`fdb7f13c5a`** 에 적용됩니다 — 공개된 nightly `build00041` 이 빌드된 바로 그 커밋입니다. `vaio-p-patches.diff`는 이 커밋 기준으로 생성했고, 해당 커밋을 깨끗하게 체크아웃한 트리에서 plain apply와 reverse apply가 모두 문제없음을 확인했습니다.
+이 패치들은 Haiku 배포판인 **RenkuOS**(<https://github.com/RenkuOS/Source>)의 커밋 **`8484655099aae479b59590d098dfcbf6fdc4d908`** 에 적용됩니다 — 2026-11-06에 확인한 upstream HEAD입니다. `vaio-p-patches.diff`는 이 커밋 기준으로 다시 만들었습니다. 기존 hunk를 upstream과 대조해 이미 반영된 수정은 제외·정리했으며, 깨끗한 체크아웃에 적용되는 것을 확인했습니다.
 
 직전 기준 `c7942d0ed7`(nightly `build00034`)는 그 직계 조상이고(21커밋 앞, 0커밋 뒤), 그중 두 커밋이 여기에 걸립니다. `c15045f974` 는 `ehci.cpp` 의 isochronous 취소를 구현합니다. 이 패치 묶음에 필요했던 것이고 이제 우리가 들고 있지 않아도 됩니다(아래 "튜너 앱을 쓰면 카메라가 죽던 문제" 참고). `676e5cffa0` 은 `ehci_itd` 에 멤버를 더해 32비트 디스크립터 정렬을 깨뜨린 그 커밋입니다. 그 전 기준 `f04d7eb54a`(nightly `build00021`)는 `c7942d0ed7` 의 직계 조상입니다(113커밋 앞, 0커밋 뒤). 아래 "`f04d7eb54a` 에서 `c7942d0ed7` 로 옮기며" 를 참고하세요. 그 전 기준이던 haiku.git `88b7b8b350`은 `f04d7eb54a`의 직계 조상(111커밋 앞, 0커밋 뒤)이므로, RenkuOS로 옮긴 것은 이식이 아니라 앞 방향 rebase였습니다.
 
-### 빌드가 따르는 커밋, 그리고 `nightly` 태그를 쓰지 않는 이유
+### 빌드가 따르는 커밋
 
-`build-vaio-p-iso.sh`는 현재 nightly가 빌드된 커밋을 빌드하며, 이를 nightly 워크플로가 릴리스 노트에 적는 `| Commit | <sha> |` 행에서 읽어옵니다. `nightly` 태그는 체크아웃하지 **않습니다**: 워크플로는 `gh release edit`로 릴리스를 갱신하는데 이 명령은 태그를 옮기지 않으므로, 태그는 여전히 첫 nightly(`47367b99ab`)를 가리키고 릴리스에 붙은 ISO는 몇 주 뒤의 커밋으로 빌드된 것입니다. 릴리스를 읽지 못하면 위의 검증된 커밋을 쓰고, `RENKU_REF`로 둘 다 덮어쓸 수 있습니다. nightly가 검증된 커밋보다 앞서 나가 있으면, 주변 코드만 밀린 hunk는 `git apply -3`가 흡수합니다.
+`build-vaio-p-iso.sh`는 매 실행 때 RenkuOS/Source의 최신 `main` 브랜치를 가져옵니다. 특정 빌드를 재현하려면 `RENKU_REF`에 커밋이나 브랜치를 지정하면 됩니다. 패치는 2026-11-06 당시 upstream HEAD인 `8484655099aae479b59590d098dfcbf6fdc4d908`를 기준으로 다시 만들고 적용을 확인했습니다.
+
+새 패치에는 VAIO 전용 수정만 남기고 upstream에 이미 들어간 변경은 제외했습니다. 32비트 EHCI 디스크립터 정렬 수정이 그 예입니다. upstream 커밋 `6ca7892827`은 비공식 빌드에서도 생성된 스플래시 헤더를 그리게 합니다. 기본 로고 픽셀은 비어 있으므로 VAIO 패치가 이를 RenkuOS 워드마크로 바꿉니다. 단독 패치는 [`renkuos-logopatch`](../renkuos-logopatch/README.md)에 있습니다.
 
 ### RenkuOS nightly는 x86_64 전용인데 32비트로 빌드하는 이유
 

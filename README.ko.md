@@ -4,11 +4,19 @@ English version: [`README.md`](README.md).
 
 이 폴더는 Sony VAIO P (VGN-P70H_G)에서 ACPI를 켜고 Safe Mode 없이 정상 부팅/설치/동작하도록 만든 패치를, [Haiku](https://www.haiku-os.org/)에서 fork된 운영체제 [RenkuOS](https://github.com/RenkuOS/Source)에 적용해 **32비트** ISO로 빌드하는 스크립트를 담고 있습니다.
 
-패치는 Haiku 자체 소스가 아니라 **RenkuOS 소스의 nightly build**에 적용됩니다: 빌드 스크립트가 현재 RenkuOS nightly가 빌드된 바로 그 커밋을 체크아웃하고, 그 위에 `vaio-p-patches.diff`를 적용해 빌드합니다.
+패치는 Haiku 자체 소스가 아니라 빌드 시점의 RenkuOS/Source 최신 `main`에 적용됩니다. 빌더가 해당 트리에 `vaio-p-patches.diff`를 적용한 뒤 빌드합니다.
 
-RenkuOS nightly 자체는 x86_64로만 배포되는데, VAIO P의 Atom Z520은 long mode가 없어 실행할 수 없습니다. 그래서 그 nightly가 빌드된 커밋을 그대로 받아 `x86_gcc2h` 하이브리드로 빌드합니다. 자세한 내용은 [`AGENTS.ko.md`](AGENTS.ko.md)의 "패치 기준 시점"에 있습니다.
+RenkuOS는 x86_64 이미지를 배포하지만 VAIO P의 Atom Z520은 long mode가 없어 실행할 수 없습니다. 이 프로젝트는 최신 소스를 `x86_gcc2h` 하이브리드로 빌드합니다. 자세한 내용은 [`AGENTS.ko.md`](AGENTS.ko.md)에 있습니다.
 
 개발·기술 노트(각 패치가 무엇을 왜 고치는지, 무엇을 측정했는지)는 [`AGENTS.ko.md`](AGENTS.ko.md)에 있습니다.
+
+## 현재 ISO
+
+새로 빌드한 `renku-vaio-p.iso`는 RenkuOS/Source 커밋
+`8484655099aae479b59590d098dfcbf6fdc4d908`을 사용합니다. SHA-256은
+`9680d1a8e948c68cfc34c526eea97cb2ed9399f21dd88e69750f011a26c17363`입니다.
+ISO가 QEMU에서 RenkuOS 시작 화면까지 부팅되는 것을 확인했습니다. VAIO 전용
+하드웨어 패치는 실제 VAIO P에서 추가 확인이 필요합니다.
 
 ## 전원을 켤 때 반복 재부팅은 정상입니다
 
@@ -68,7 +76,7 @@ cd tools/vaio-p
 ### 환경 변수
 
 - `SKIP_CROSS_TOOLS=1` : 크로스컴파일러가 이미 빌드되어 있으면 재빌드를 생략합니다 (패치만 수정하고 다시 빌드할 때 유용하며, 크로스툴 빌드에만 1~1.5시간이 소요됩니다).
-- `RENKU_REF` : 빌드할 RenkuOS/Source의 브랜치/태그/커밋입니다. 기본값은 현재 nightly 릴리스가 빌드된 커밋으로, 릴리스 노트에서 읽어옵니다 — 절대 움직이지 않는 `nightly` 태그가 아닙니다([`AGENTS.ko.md`](AGENTS.ko.md)의 "패치 기준 시점" 참고). 릴리스를 읽지 못하면 검증된 커밋 `f04d7eb54a`를 씁니다.
+- `RENKU_REF` : 빌드할 RenkuOS/Source의 브랜치/태그/커밋입니다. 기본값은 최신 `main` 커밋입니다. 이전 빌드를 재현하려면 커밋이나 브랜치를 지정합니다.
 - `DISTRO_COMPATIBILITY` : `configure --distro-compatibility` 값입니다. 기본값은 RenkuOS nightly와 같은 `default`입니다.
 - `IMAGE_LABEL` : `HAIKU_IMAGE_LABEL` 값입니다. 기본값은 nightly와 같은 `RenkuOS`입니다.
 - `CONTAINER_NAME` (macOS 래퍼 전용) : 빌드 컨테이너 이름입니다. 기본값은 `vaio-p-builder`입니다.
@@ -77,7 +85,7 @@ cd tools/vaio-p
 
 ### `--distro-compatibility default`를 쓰는 이유
 
-RenkuOS nightly가 이 설정으로 빌드하기 때문입니다. 상표가 있는 아트워크를 포함하지 않으므로 설치된 시스템의 바탕화면 로고가 비어 있는데, [`restore-haiku-logo.sh`](restore-haiku-logo.sh)로 되돌릴 수 있습니다. 부팅 스플래시는 어느 쪽이든 영향이 없습니다 — 패치셋이 더 이상 부팅 시 로고를 그리지 않기 때문입니다.
+RenkuOS nightly가 이 설정으로 빌드하기 때문입니다. 상표가 있는 아트워크를 포함하지 않으므로 설치된 시스템의 바탕화면 로고가 비어 있는데, [`restore-haiku-logo.sh`](restore-haiku-logo.sh)로 되돌릴 수 있습니다. upstream 부팅 코드는 생성된 스플래시 헤더를 그리지만 기본 로고 픽셀은 비어 있습니다. `vaio-p-patches.diff`가 이를 RenkuOS 로고로 바꿉니다. 단독 패치는 [`renkuos-logopatch`](../renkuos-logopatch/README.md)에 있습니다.
 
 ## 그래픽
 

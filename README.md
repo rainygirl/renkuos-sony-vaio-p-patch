@@ -4,11 +4,19 @@
 
 This folder contains the scripts that apply the Sony VAIO P (VGN-P70H_G) boot/install/hardware patches to [RenkuOS](https://github.com/RenkuOS/Source), an operating system forked from [Haiku](https://www.haiku-os.org/), and build it into a **32-bit** ISO.
 
-The patches are applied to the RenkuOS source at its **nightly build**, not to Haiku's own source: the build script checks out the exact commit the current RenkuOS nightly was built from, applies `vaio-p-patches.diff` on top of it, and builds that.
+The patches are applied to the latest RenkuOS/Source `main` commit at build time, not to Haiku's own source. The builder applies `vaio-p-patches.diff` to that checkout before building.
 
-The RenkuOS nightly itself is published for x86_64 only, which the VAIO P cannot run: its Atom Z520 has no long mode. The build takes the exact commit that nightly was built from and produces the `x86_gcc2h` hybrid instead. Details are under "Patch baseline" in [`AGENTS.md`](AGENTS.md).
+RenkuOS publishes x86_64 images, which the VAIO P cannot run: its Atom Z520 has no long mode. This project builds the latest source as an `x86_gcc2h` hybrid instead. Details are in [`AGENTS.md`](AGENTS.md).
 
 Development and technical notes -- what each patch does, why, and what was measured -- are in [`AGENTS.md`](AGENTS.md).
+
+## Current ISO
+
+The freshly built `renku-vaio-p.iso` uses RenkuOS/Source commit
+`8484655099aae479b59590d098dfcbf6fdc4d908`. Its SHA-256 is
+`9680d1a8e948c68cfc34c526eea97cb2ed9399f21dd88e69750f011a26c17363`.
+The ISO boots to the RenkuOS welcome screen in QEMU; the VAIO-specific hardware
+patches still require verification on the physical VAIO P.
 
 ## Repeated reboots at power-on are expected
 
@@ -68,7 +76,7 @@ cd tools/vaio-p
 ### Environment variables
 
 - `SKIP_CROSS_TOOLS=1` : Skip rebuilding the cross-compiler if it already exists (useful when only a patch changed — the cross-tools build alone takes ~1-1.5 hours).
-- `RENKU_REF` : Branch/tag/commit of RenkuOS/Source to build. Defaults to the commit the current nightly release was built from, read from its release notes -- not the `nightly` tag, which never moves (see "Patch baseline" in [`AGENTS.md`](AGENTS.md)). Falls back to the verified commit `f04d7eb54a` if the release cannot be read.
+- `RENKU_REF` : Branch/tag/commit of RenkuOS/Source to build. Defaults to the latest `main` commit. Set this to a commit or branch to reproduce an older build.
 - `DISTRO_COMPATIBILITY` : `configure --distro-compatibility`. Defaults to `default`, as the RenkuOS nightly uses.
 - `IMAGE_LABEL` : `HAIKU_IMAGE_LABEL`. Defaults to `RenkuOS`, as the nightly uses.
 - `CONTAINER_NAME` (macOS wrapper only) : Build container name. Defaults to `vaio-p-builder`.
@@ -77,7 +85,7 @@ cd tools/vaio-p
 
 ### Why `--distro-compatibility default`
 
-That is what the RenkuOS nightly builds with. It ships no trademarked artwork, so an installed system comes up without the desktop logo; [`restore-haiku-logo.sh`](restore-haiku-logo.sh) puts it back. The boot splash is unaffected either way, since the patch set no longer draws the logo at boot.
+That is what the RenkuOS nightly builds with. It ships no trademarked artwork, so an installed system comes up without the desktop logo; [`restore-haiku-logo.sh`](restore-haiku-logo.sh) puts it back. The upstream boot code draws the generated splash header, but its default logo pixels are empty. `vaio-p-patches.diff` replaces them with the RenkuOS logo; the change is also available as standalone [`renkuos-logopatch`](../renkuos-logopatch/README.md).
 
 ## Graphics
 
